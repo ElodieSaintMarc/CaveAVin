@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Cave à Vin (PWA + Scan)</title>
+  <meta name="theme-color" content="#4a0e1f"/>
+  <link rel="manifest" href="manifest.webmanifest"/>
+  <link rel="icon" href="icon-192.png"/>
+  <style>
+    :root{--bordeaux:#4a0e1f;--beige:#faf6f0;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--beige);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#1e1e1e}
+    header{position:sticky;top:0;background:var(--beige);display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #eee;z-index:10}
+    .logo{width:32px;height:32px;border-radius:8px;background:var(--bordeaux);display:grid;place-items:center;color:#fff}
+    .title{font-weight:800}
+    main{max-width:980px;margin:0 auto;padding:16px}
+    .card{background:#fff;border:1px solid #eee;border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+    input,select,button{font:inherit}
+    input[type=text],input[type=number],select{width:100%;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px}
+    button.primary{background:var(--bordeaux);color:#fff;border:none;padding:12px 16px;border-radius:12px;cursor:pointer}
+    button.ghost{background:#fff;border:1px solid #e5e7eb;padding:12px 16px;border-radius:12px;cursor:pointer}
+    .pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:8px 12px;background:#f3f4f6;border:1px solid #eee;font-size:14px}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{display:flex;align-items:center;justify-content:space-between;border:1px solid #eee;border-radius:14px;padding:12px}
+    .muted{color:var(--muted)}
+    .video-wrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid #eee}
+    video{width:100%;height:auto;display:block;background:#000}
+    canvas{display:none}
+    .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 14px;border-radius:999px;opacity:.95;display:none;z-index:50}
+    .toast.show{display:block}
+    .splash{position:fixed;inset:0;background:var(--bordeaux);display:grid;place-items:center;color:#fff;z-index:100;animation:fadeout 1s ease 1.2s forwards}
+    .splash-name{font-weight:800}
+    @keyframes fadeout{to{opacity:0;visibility:hidden}}
+  </style>
+</head>
+<body>
+  <div class="splash"><div class="splash-name">Cave à Vin</div></div>
+  <header>
+    <div class="logo">🍷</div><div class="title">Cave à Vin — PWA + Scan</div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="ghost" id="installBtn" hidden>Installer</button>
+    </div>
+  </header>
+  <main>
+    <div class="row">
+      <div class="card" style="flex:1;min-width:260px">
+        <div class="muted">Total bouteilles</div>
+        <div id="total" style="font-size:28px;font-weight:800">0</div>
+        <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
+      </div>
+      <div class="card" style="flex:1;min-width:260px">
+        <div class="grid">
+          <div>
+            <div class="muted">Recherche</div>
+            <input id="q" type="text" placeholder="Nom, appellation, type…">
+          </div>
+          <div>
+            <div class="muted">Année</div>
+            <select id="yf"><option value="">Toutes</option></select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="primary" id="add">+ Ajouter</button>
+          <button class="ghost" id="stats">📊 Statistiques</button>
+          <button class="ghost" id="openScanner">📷 Scanner</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="muted" style="margin-bottom:8px">Mes bouteilles</div>
+      <div id="list" class="list"></div>
+      <div id="empty" class="muted" style="text-align:center;display:none">Aucune bouteille.</div>
+    </div>
+
+    <!-- Add/Edit -->
+    <div id="formWrap" class="card" style="margin-top:12px;display:none">
+      <h3 id="formTitle">Ajouter une bouteille</h3>
+      <div class="grid">
+        <div><div class="muted">Nom du château</div><input id="f_nom" type="text"></div>
+        <div><div class="muted">Année</div><input id="f_annee" type="number" min="1900" max="2100"></div>
+        <div><div class="muted">Type</div><select id="f_type"><option>Rouge</option><option>Blanc</option><option>Rosé</option><option>Champagne</option><option>Champagne rosé</option></select></div>
+        <div><div class="muted">Appellation</div><input id="f_app" type="text"></div>
+        <div><div class="muted">Prix estimé (€)</div><input id="f_prix" type="number" step="0.01"></div>
+        <div><div class="muted">Quantité</div><input id="f_qte" type="number" min="1" value="1"></div>
+        <div><div class="muted">Format</div><select id="f_fmt"><option>Bouteille</option><option>Magnum</option></select></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="primary" id="save">Enregistrer</button>
+        <button class="ghost" id="cancel">Annuler</button>
+      </div>
+    </div>
+
+    <!-- Scanner -->
+    <div id="scanWrap" class="card" style="margin-top:12px;display:none">
+      <h3>Scanner une étiquette</h3>
+      <div class="video-wrap">
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="ghost" id="stopScan">Arrêter</button>
+        <span class="muted" id="scanStatus">Recherche de code-barres…</span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="statsWrap" class="card" style="margin-top:12px;display:none">
+      <h3>Statistiques</h3>
+      <div id="statsContent"></div>
+      <div style="margin-top:10px"><button class="ghost" id="closeStats">Fermer</button></div>
+    </div>
+  </main>
+  <div class="toast" id="toast"></div>
+
+  <!-- Quagga2 for barcode -->
+  <script src="https://cdn.jsdelivr.net/npm/quagga2@2.0.2/dist/quagga.min.js"></script>
+  <!-- Tesseract.js for OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <script>
+    // PWA install prompt
+    let deferredPrompt; const installBtn=document.getElementById('installBtn');
+    window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); deferredPrompt=e; installBtn.hidden=false; });
+    installBtn?.addEventListener('click', async()=>{ installBtn.hidden=true; deferredPrompt?.prompt(); });
+
+    // Service worker
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('service-worker.js'); }
+
+    // Data
+    const KEY="cave_pwa_v1";
+    let data = JSON.parse(localStorage.getItem(KEY) || "null") || [
+      {id:cid(), nom:"Château Exemple Rouge", annee:2018, type:"Rouge", appellation:"Moulis", prix:25, qte:3, format:"Bouteille"},
+      {id:cid(), nom:"Domaine Exemple Blanc", annee:2020, type:"Blanc", appellation:"Pouilly-Fumé", prix:18.5, qte:2, format:"Bouteille"},
+      {id:cid(), nom:"Maison Demo Rosé", annee:2022, type:"Rosé", appellation:"Côtes de Provence", prix:12, qte:6, format:"Bouteille"},
+      {id:cid(), nom:"Champagne Demo", annee:2015, type:"Champagne", appellation:"Brut", prix:45, qte:1, format:"Bouteille"}
+    ];
+    persist();
+
+    // UI elements
+    const listEl = document.getElementById('list');
+    const emptyEl = document.getElementById('empty');
+    const totalEl = document.getElementById('total');
+    const chipsEl = document.getElementById('chips');
+    const qEl = document.getElementById('q');
+    const yfEl = document.getElementById('yf');
+    const addBtn = document.getElementById('add');
+    const statsBtn = document.getElementById('stats');
+    const statsWrap = document.getElementById('statsWrap');
+    const statsContent = document.getElementById('statsContent');
+    const closeStats = document.getElementById('closeStats');
+    const formWrap = document.getElementById('formWrap');
+    const formTitle = document.getElementById('formTitle');
+    const f_nom = document.getElementById('f_nom');
+    const f_annee = document.getElementById('f_annee');
+    const f_type = document.getElementById('f_type');
+    const f_app = document.getElementById('f_app');
+    const f_prix = document.getElementById('f_prix');
+    const f_qte = document.getElementById('f_qte');
+    const f_fmt = document.getElementById('f_fmt');
+    const saveBtn = document.getElementById('save');
+    const cancelBtn = document.getElementById('cancel');
+
+    const scanWrap = document.getElementById('scanWrap');
+    const openScanner = document.getElementById('openScanner');
+    const stopScan = document.getElementById('stopScan');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const scanStatus = document.getElementById('scanStatus');
+    const toast = document.getElementById('toast');
+
+    let editingId = null;
+
+    function cid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4) }
+    function persist(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+
+    function render(){
+      // totals
+      const total = data.reduce((s,b)=> s+Number(b.qte||0), 0);
+      totalEl.textContent = total;
+      // chips
+      const byType = {}; data.forEach(b=>byType[b.type]=(byType[b.type]||0)+Number(b.qte||0));
+      chipsEl.innerHTML = "";
+      ["Rouge","Blanc","Rosé","Champagne","Champagne rosé"].forEach(t=>{
+        const n = byType[t]||0;
+        const span = document.createElement('span'); span.className="pill"; span.textContent=`${t}${(t.startsWith('Champagne')?' •○•':'')}: ${n}`;
+        chipsEl.appendChild(span);
+      });
+      // year options
+      const years = [...new Set(data.map(b=>Number(b.annee)).filter(Boolean))].sort((a,b)=>b-a);
+      const cur = yfEl.value; yfEl.innerHTML = `<option value="">Toutes</option>` + years.map(y=>`<option ${String(cur)===String(y)?'selected':''} value="${y}">${y}</option>`).join("");
+      // list
+      let arr = data.slice();
+      const q = qEl.value.trim().toLowerCase(); if(q) arr = arr.filter(b => [b.nom,b.appellation,b.type,String(b.annee)].join(" ").toLowerCase().includes(q));
+      const y = yfEl.value; if(y) arr = arr.filter(b => String(b.annee)===String(y));
+      arr.sort((a,b)=> (b.annee||0)-(a.annee||0));
+      listEl.innerHTML="";
+      if(arr.length===0){ emptyEl.style.display='block'; }
+      else{
+        emptyEl.style.display='none';
+        arr.forEach(b=>{
+          const div=document.createElement('div'); div.className='item';
+          div.innerHTML = `<div><strong>${b.nom}</strong> <span class="muted">(${b.annee||"?"})</span><div class="muted" style="font-size:13px">${b.appellation||"—"} • ${b.format||"Bouteille"} • ${b.qte||0} pcs • ${b.prix?Number(b.prix).toFixed(2)+'€':'—'}</div></div>
+          <div style="display:flex;gap:6px">
+            <button class="ghost" data-edit="${b.id}">Modifier</button>
+            <button class="ghost" data-del="${b.id}">Supprimer</button>
+          </div>`;
+          listEl.appendChild(div);
+        });
+      }
+    }
+
+    qEl.addEventListener('input', render);
+    yfEl.addEventListener('change', render);
+    listEl.addEventListener('click', (e)=>{
+      const idEdit = e.target.getAttribute('data-edit');
+      const idDel  = e.target.getAttribute('data-del');
+      if(idEdit){
+        const b = data.find(x=>x.id===idEdit); if(!b) return;
+        editingId = b.id; formTitle.textContent="Modifier la bouteille";
+        f_nom.value=b.nom||""; f_annee.value=b.annee||""; f_type.value=b.type||"Rouge";
+        f_app.value=b.appellation||""; f_prix.value=b.prix||""; f_qte.value=b.qte||1; f_fmt.value=b.format||"Bouteille";
+        formWrap.style.display='block'; window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+      }
+      if(idDel){
+        if(confirm("Supprimer cette bouteille ? Cette action est irréversible.")){
+          data = data.filter(b=>b.id!==idDel); persist(); render();
+        }
+      }
+    });
+
+    addBtn.addEventListener('click', ()=>{
+      editingId=null; formTitle.textContent="Ajouter une bouteille";
+      [f_nom,f_annee,f_app,f_prix,f_qte].forEach(el=>el.value=""); f_type.value="Rouge"; f_fmt.value="Bouteille";
+      formWrap.style.display='block'; window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    });
+
+    cancelBtn.addEventListener('click', ()=>{ formWrap.style.display='none'; });
+
+    saveBtn.addEventListener('click', ()=>{
+      const payload = {
+        nom: f_nom.value.trim(),
+        annee: Number(f_annee.value||0),
+        type: f_type.value,
+        appellation: f_app.value.trim(),
+        prix: Number(f_prix.value||0),
+        qte: Number(f_qte.value||1),
+        format: f_fmt.value
+      };
+      if(!payload.nom){ toastMsg("Nom requis"); return; }
+      if(editingId){
+        const b = data.find(x=>x.id===editingId); Object.assign(b, payload);
+      } else {
+        payload.id = cid(); data.push(payload);
+      }
+      persist(); formWrap.style.display='none'; render();
+      toastMsg("Enregistré ✅");
+    });
+
+    statsBtn.addEventListener('click', ()=>{
+      const total = data.reduce((s,b)=>s+Number(b.qte||0),0);
+      const value = data.reduce((s,b)=> s + Number(b.prix||0)*Number(b.qte||0), 0);
+      const byType = {}; data.forEach(b=>byType[b.type]=(byType[b.type]||0)+Number(b.qte||0));
+      const years = {}; data.forEach(b=>years[b.annee]=(years[b.annee]||0)+Number(b.qte||0));
+      statsContent.innerHTML = `
+        <div class="pill">Total: <strong>${total}</strong></div>
+        <div class="pill">Valeur estimée: <strong>${value.toFixed(2)} €</strong></div>
+        <div style="margin-top:10px"><strong>Par type</strong></div>
+        ${Object.entries(byType).map(([t,n])=>`<div>${t}: <strong>${n}</strong></div>`).join("")}
+        <div style="margin-top:10px"><strong>Par millésime</strong></div>
+        ${Object.entries(years).sort((a,b)=>b[0]-a[0]).map(([y,n])=>`<div>${y}: <strong>${n}</strong></div>`).join("")}
+      `;
+      statsWrap.style.display='block';
+      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    });
+    closeStats.addEventListener('click', ()=> statsWrap.style.display='none');
+
+    // Scanner
+    let scanning=false, quaggaStarted=false, ocrTimer=null;
+    openScanner.addEventListener('click', async()=>{
+      scanWrap.style.display='block'; window.scrollTo({top:scanWrap.offsetTop-10,behavior:'smooth'});
+      scanStatus.textContent="Recherche de code-barres…";
+      await startBarcode();
+      // si pas trouvé en 10s, lancer OCR
+      clearTimeout(ocrTimer);
+      ocrTimer = setTimeout(()=>{
+        if(!quaggaStarted){ return; }
+        stopBarcode();
+        scanStatus.textContent="Aucun code-barres trouvé, lecture de l'étiquette (OCR)…";
+        startOCR();
+      }, 10000);
+    });
+
+    stopScan.addEventListener('click', ()=>{
+      stopBarcode(); scanning=false; stopStream(); scanWrap.style.display='none';
+      scanStatus.textContent=""; clearTimeout(ocrTimer);
+    });
+
+    async function startBarcode(){
+      try{
+        scanning=true;
+        await startStream();
+        Quagga.init({
+          inputStream:{ type:"LiveStream", target: video, constraints:{ facingMode:"environment" } },
+          decoder:{ readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader"] }
+        }, (err)=>{
+          if(err){ console.error(err); scanStatus.textContent="Erreur caméra/code-barres"; return; }
+          Quagga.start(); quaggaStarted=true;
+          Quagga.onDetected(onBarcode);
+        });
+      }catch(e){ console.error(e); scanStatus.textContent="Impossible d'accéder à la caméra"; }
+    }
+    function stopBarcode(){
+      if(quaggaStarted){ Quagga.stop(); Quagga.offDetected(onBarcode); quaggaStarted=false; }
+    }
+    function onBarcode(res){
+      const code = res?.codeResult?.code;
+      if(!code) return;
+      stopBarcode(); stopStream();
+      scanStatus.textContent = "Code-barres détecté : "+code;
+      // Simuler une base: on pré-remplit selon type d'EAN
+      const guess = fakeLookupByEAN(code);
+      fillForm(guess);
+      toastMsg("Code-barres reconnu ✅");
+      scanWrap.style.display='none';
+    }
+
+    // OCR fallback
+    async function startOCR(){
+      try{
+        await startStream();
+        const ctx = canvas.getContext('2d');
+        // capture une frame
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const dataURL = canvas.toDataURL('image/png');
+        stopStream();
+        const { data: { text } } = await Tesseract.recognize(dataURL, 'eng+fra', { logger: m=>{} });
+        const guess = parseLabel(text || "");
+        fillForm(guess);
+        toastMsg("Texte d'étiquette reconnu ✅");
+        scanWrap.style.display='none';
+      }catch(e){
+        console.error(e);
+        toastMsg("Échec OCR");
+      }
+    }
+
+    function fillForm(guess){
+      document.getElementById('formWrap').style.display='block';
+      document.getElementById('formTitle').textContent = "Ajouter (pré-rempli)";
+      f_nom.value = guess.nom || "";
+      f_annee.value = guess.annee || "";
+      f_type.value = guess.type || "Rouge";
+      f_app.value = guess.appellation || "";
+      f_prix.value = guess.prix || "";
+      f_qte.value = 1;
+      f_fmt.value = "Bouteille";
+      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    }
+
+    function fakeLookupByEAN(code){
+      // Demo: basique selon longueur/dernier chiffre
+      const last = Number(code.slice(-1));
+      if(code.length>=13 && last%2===0){
+        return { nom:"Château Scan EAN", annee:2019, type:"Rouge", appellation:"Saint-Estèphe", prix:29.9 };
+      }else if(code.length>=12 && last%3===0){
+        return { nom:"Domaine Scan UPC", annee:2021, type:"Blanc", appellation:"Chablis", prix:22.0 };
+      }else{
+        return { nom:"Champagne EAN", annee:2014, type:"Champagne", appellation:"Brut", prix:49.0 };
+      }
+    }
+
+    function parseLabel(text){
+      const t = text.replace(/\s+/g,' ').trim();
+      // année: 4 chiffres plausibles
+      const yearMatch = t.match(/\b(19[5-9]\d|20[0-4]\d)\b/);
+      // type
+      const lower = t.toLowerCase();
+      let type="Rouge";
+      if(lower.includes("blanc")) type="Blanc";
+      if(lower.includes("rosé") || lower.includes("rose")) type="Rosé";
+      if(lower.includes("champagne")) type = lower.includes("ros") ? "Champagne rosé" : "Champagne";
+      // appellation (heuristique : mot après "appellation" ou un AOC connu simple)
+      let appellation="";
+      const app1 = t.match(/appellation\s+([A-Za-zÀ-ÿ\- ]+)/i);
+      if(app1) appellation = app1[1].trim().split(" ").slice(0,3).join(" ");
+      // nom (heuristique : premiers mots en capitales)
+      let nom="";
+      const nomMatch = t.match(/\b(Ch[âa]teau|Domaine|Maison)\s+[A-ZA-Za-zÀ-ÿ'\- ]{3,}/);
+      if(nomMatch) nom = nomMatch[0].trim();
+      if(!nom){
+        const m2 = t.match(/[A-Z][A-Za-zÀ-ÿ'\-]{2,}(?:\s+[A-Z][A-Za-zÀ-ÿ'\-]{2,}){0,3}/);
+        if(m2) nom = m2[0].trim();
+      }
+      return { nom, annee: yearMatch ? Number(yearMatch[0]) : "", type, appellation, prix:"" };
+    }
+
+    async function startStream(){
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio:false });
+      video.srcObject = stream; await video.play();
+      return stream;
+    }
+    function stopStream(){
+      const s = video.srcObject;
+      if(s){ s.getTracks().forEach(t=>t.stop()); video.srcObject=null; }
+    }
+
+    function toastMsg(msg){ toast.textContent=msg; toast.className='toast show'; setTimeout(()=>toast.className='toast', 1800); }
+
+    // init
+    window.addEventListener('load', ()=> render());
+  </script>
+</body>
+</html>
